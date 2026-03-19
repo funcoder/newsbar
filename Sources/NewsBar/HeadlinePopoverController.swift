@@ -397,6 +397,9 @@ private final class StoryButton: NSButton {
     let item: NewsItem
     private let style: StoryStyle
     private var imageTask: Task<Void, Never>?
+    private var trackingArea: NSTrackingArea?
+    private var originalBackgroundColor: CGColor?
+    private var cursorPushed = false
 
     init(item: NewsItem, style: StoryStyle) {
         self.item = item
@@ -411,6 +414,110 @@ private final class StoryButton: NSButton {
 
     deinit {
         imageTask?.cancel()
+        if cursorPushed {
+            NSCursor.pop()
+        }
+    }
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        if let existing = trackingArea {
+            removeTrackingArea(existing)
+        }
+        let area = NSTrackingArea(
+            rect: bounds,
+            options: [.mouseEnteredAndExited, .activeInActiveApp],
+            owner: self,
+            userInfo: nil
+        )
+        addTrackingArea(area)
+        trackingArea = area
+    }
+
+    override func viewDidMoveToSuperview() {
+        super.viewDidMoveToSuperview()
+        if superview == nil {
+            layer?.removeAllAnimations()
+            if cursorPushed {
+                NSCursor.pop()
+                cursorPushed = false
+            }
+        }
+    }
+
+    override func mouseEntered(with event: NSEvent) {
+        if !cursorPushed {
+            NSCursor.pointingHand.push()
+            cursorPushed = true
+        }
+
+        layer?.shadowColor = NSColor(red: 0.1, green: 0.08, blue: 0.06, alpha: 1).cgColor
+        layer?.shadowOffset = CGSize(width: 0, height: -2)
+
+        layer?.shadowOpacity = 0.15
+        let shadowAnim = CABasicAnimation(keyPath: "shadowOpacity")
+        shadowAnim.fromValue = 0
+        shadowAnim.toValue = 0.15
+        shadowAnim.duration = 0.2
+        layer?.add(shadowAnim, forKey: "hoverShadowOpacity")
+
+        layer?.shadowRadius = 8
+        let radiusAnim = CABasicAnimation(keyPath: "shadowRadius")
+        radiusAnim.fromValue = 0
+        radiusAnim.toValue = 8
+        radiusAnim.duration = 0.2
+        layer?.add(radiusAnim, forKey: "hoverShadowRadius")
+
+        let tintColor = hoverTintColor()
+        layer?.backgroundColor = tintColor
+        let bgAnim = CABasicAnimation(keyPath: "backgroundColor")
+        bgAnim.fromValue = originalBackgroundColor
+        bgAnim.toValue = tintColor
+        bgAnim.duration = 0.2
+        layer?.add(bgAnim, forKey: "hoverBackground")
+    }
+
+    override func mouseExited(with event: NSEvent) {
+        if cursorPushed {
+            NSCursor.pop()
+            cursorPushed = false
+        }
+
+        layer?.shadowOpacity = 0
+        let shadowAnim = CABasicAnimation(keyPath: "shadowOpacity")
+        shadowAnim.fromValue = 0.15
+        shadowAnim.toValue = 0
+        shadowAnim.duration = 0.2
+        layer?.add(shadowAnim, forKey: "hoverShadowOpacity")
+
+        layer?.shadowRadius = 0
+        let radiusAnim = CABasicAnimation(keyPath: "shadowRadius")
+        radiusAnim.fromValue = 8
+        radiusAnim.toValue = 0
+        radiusAnim.duration = 0.2
+        layer?.add(radiusAnim, forKey: "hoverShadowRadius")
+
+        layer?.backgroundColor = originalBackgroundColor
+        let bgAnim = CABasicAnimation(keyPath: "backgroundColor")
+        bgAnim.fromValue = hoverTintColor()
+        bgAnim.toValue = originalBackgroundColor
+        bgAnim.duration = 0.2
+        layer?.add(bgAnim, forKey: "hoverBackground")
+    }
+
+    private func hoverTintColor() -> CGColor {
+        switch style {
+        case .ribbonLead:
+            return NSColor(red: 0.82, green: 0.82, blue: 0.92, alpha: 1).cgColor
+        case .ribbonSide:
+            return NSColor(red: 0.85, green: 0.79, blue: 0.87, alpha: 1).cgColor
+        case .heroImage:
+            return NSColor.black.withAlphaComponent(0.09).cgColor
+        case .sideFeature:
+            return NSColor.white.withAlphaComponent(0.65).cgColor
+        case .mainHeadline, .columnStory:
+            return NSColor(red: 0.95, green: 0.94, blue: 0.91, alpha: 1).cgColor
+        }
     }
 
     private func setup() {
@@ -437,8 +544,9 @@ private final class StoryButton: NSButton {
     }
 
     private func configureRibbonLead() {
-        wantsLayer = true
-        layer?.backgroundColor = NSColor(red: 0.86, green: 0.86, blue: 0.94, alpha: 1).cgColor
+        let bgColor = NSColor(red: 0.86, green: 0.86, blue: 0.94, alpha: 1).cgColor
+        layer?.backgroundColor = bgColor
+        originalBackgroundColor = bgColor
         layer?.cornerRadius = 2
 
         let headline = NSTextField(wrappingLabelWithString: item.title)
@@ -457,8 +565,9 @@ private final class StoryButton: NSButton {
     }
 
     private func configureRibbonSide() {
-        wantsLayer = true
-        layer?.backgroundColor = NSColor(red: 0.89, green: 0.83, blue: 0.9, alpha: 1).cgColor
+        let bgColor = NSColor(red: 0.89, green: 0.83, blue: 0.9, alpha: 1).cgColor
+        layer?.backgroundColor = bgColor
+        originalBackgroundColor = bgColor
         layer?.cornerRadius = 2
 
         let kicker = NSTextField(labelWithString: "SPOTLIGHT")
@@ -485,8 +594,9 @@ private final class StoryButton: NSButton {
     }
 
     private func configureHero() {
-        wantsLayer = true
-        layer?.backgroundColor = NSColor.black.withAlphaComponent(0.06).cgColor
+        let bgColor = NSColor.black.withAlphaComponent(0.06).cgColor
+        layer?.backgroundColor = bgColor
+        originalBackgroundColor = bgColor
         layer?.cornerRadius = 2
 
         let imageView = NSImageView()
@@ -523,8 +633,9 @@ private final class StoryButton: NSButton {
     }
 
     private func configureSideFeature() {
-        wantsLayer = true
-        layer?.backgroundColor = NSColor.white.withAlphaComponent(0.45).cgColor
+        let bgColor = NSColor.white.withAlphaComponent(0.45).cgColor
+        layer?.backgroundColor = bgColor
+        originalBackgroundColor = bgColor
         layer?.cornerRadius = 2
         layer?.borderColor = NSColor.black.withAlphaComponent(0.08).cgColor
         layer?.borderWidth = 1
