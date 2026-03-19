@@ -10,6 +10,7 @@ final class StatusBarController {
     private var headlines: [NewsItem] = []
     private var previousTitles: Set<String> = []
     private var badgeDot: CALayer?
+    private var isFirstRefresh = true
 
     init() {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
@@ -122,12 +123,21 @@ final class StatusBarController {
                     if !self.previousTitles.isEmpty {
                         self.showBadge()
                     }
-                    if let button = self.statusItem.button {
+                    let showBubbles = { [weak self] in
+                        guard let self, let button = self.statusItem.button else { return }
                         let bubbleItems = self.makeBalancedBubbleItems(from: newItems, limit: 5)
                         fputs("[NewsBar] showing bubbles for \(bubbleItems.count) items, button.window=\(String(describing: button.window))\n", stderr)
                         self.bubbleController.show(headlines: bubbleItems, below: button)
                     }
+                    if self.isFirstRefresh {
+                        DispatchQueue.main.asyncAfter(deadline: .now() + Constants.startupBubbleDelay) {
+                            showBubbles()
+                        }
+                    } else {
+                        showBubbles()
+                    }
                 }
+                self.isFirstRefresh = false
                 self.previousTitles = currentTitles
 
                 if self.popover.isShown {

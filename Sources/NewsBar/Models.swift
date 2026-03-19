@@ -24,4 +24,5 @@ enum Constants {
 
     static let bubbleDisplayDuration: TimeInterval = 9.0
     static let bubbleAnimationDuration: TimeInterval = 0.35
+    static let startupBubbleDelay: TimeInterval = 3.0
 }
