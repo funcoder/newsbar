@@ -1,133 +1,98 @@
 import AppKit
 
-private let tickerWidth: CGFloat = 360
-
 final class StatusBarController {
     private let statusItem: NSStatusItem
     private let newsService = NewsService()
-    private let tickerView: TickerView
+    private let popover = NSPopover()
+    private let popoverController = HeadlinePopoverController()
+    private let bubbleController = BubbleWindowController()
     private var refreshTimer: Timer?
     private var headlines: [NewsItem] = []
     private var previousTitles: Set<String> = []
-    private var isShowingTicker = false
+    private var badgeDot: CALayer?
 
     init() {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
 
-        tickerView = TickerView(frame: NSRect(x: 0, y: 0, width: tickerWidth, height: 22))
-        tickerView.onFinished = { [weak self] in
-            DispatchQueue.main.async {
-                self?.collapseToIcon()
-            }
+        popover.contentViewController = popoverController
+        popover.behavior = .transient
+
+        popoverController.onRefresh = { [weak self] in
+            self?.previousTitles = []
+            self?.refresh()
+        }
+        popoverController.onQuit = {
+            NSApplication.shared.terminate(nil)
         }
 
-        buildMenu()
+        setupIcon()
+        setupClickAction()
         startRefreshTimer()
         refresh()
     }
 
-    // MARK: - Ticker / Icon switching
+    // MARK: - Icon
 
-    private func showTicker(with titles: [String]) {
-        guard !titles.isEmpty else { return }
-        isShowingTicker = true
-
-        statusItem.length = tickerWidth
-        statusItem.button?.title = ""
-        statusItem.button?.image = nil
-
-        if tickerView.superview == nil, let button = statusItem.button {
-            tickerView.frame = button.bounds
-            tickerView.autoresizingMask = [.width, .height]
-            button.addSubview(tickerView)
-        }
-
-        tickerView.isHidden = false
-        tickerView.update(headlines: titles)
-    }
-
-    private func collapseToIcon() {
-        isShowingTicker = false
-        tickerView.stop()
-        tickerView.isHidden = true
-
-        statusItem.length = NSStatusItem.variableLength
-        statusItem.button?.title = ""
+    private func setupIcon() {
+        guard let button = statusItem.button else { return }
         if let image = NSImage(systemSymbolName: Constants.menuBarIconName, accessibilityDescription: "NewsBar") {
             let config = NSImage.SymbolConfiguration(pointSize: 14, weight: .medium)
-            statusItem.button?.image = image.withSymbolConfiguration(config)
-            statusItem.button?.imagePosition = .imageOnly
-        }
-    }
-
-    // MARK: - Menu
-
-    private func buildMenu() {
-        let menu = NSMenu()
-
-        menu.addItem(NSMenuItem(title: "Loading headlines...", action: nil, keyEquivalent: ""))
-        menu.addItem(.separator())
-        menu.addItem(NSMenuItem(title: "Refresh Now", action: #selector(refreshClicked), keyEquivalent: "r"))
-        menu.addItem(.separator())
-        menu.addItem(NSMenuItem(title: "Quit NewsBar", action: #selector(quitClicked), keyEquivalent: "q"))
-
-        for item in menu.items {
-            item.target = self
-        }
-
-        statusItem.menu = menu
-    }
-
-    private func rebuildMenu(with items: [NewsItem]) {
-        let menu = NSMenu()
-
-        for source in NewsSource.allCases {
-            let sourceItems = items.filter { $0.source == source }
-            guard !sourceItems.isEmpty else { continue }
-
-            let header = NSMenuItem(title: source.rawValue, action: nil, keyEquivalent: "")
-            header.isEnabled = false
-            header.attributedTitle = NSAttributedString(
-                string: source.rawValue,
-                attributes: [.font: NSFont.boldSystemFont(ofSize: 13)]
-            )
-            menu.addItem(header)
-
-            for newsItem in sourceItems {
-                let menuItem = NSMenuItem(title: newsItem.title, action: #selector(headlineClicked(_:)), keyEquivalent: "")
-                menuItem.target = self
-                menuItem.representedObject = newsItem.url
-                menu.addItem(menuItem)
+            if let configured = image.withSymbolConfiguration(config) {
+                configured.isTemplate = true
+                button.image = configured
+                button.imagePosition = .imageOnly
+                statusItem.length = NSStatusItem.squareLength
+            } else {
+                button.image = image
+                button.imagePosition = .imageOnly
+                statusItem.length = NSStatusItem.squareLength
             }
-
-            menu.addItem(.separator())
+        } else {
+            // Fallback to a text glyph so the status item is never invisible.
+            button.image = nil
+            button.title = "N"
+            button.font = NSFont.systemFont(ofSize: 13, weight: .semibold)
+            statusItem.length = NSStatusItem.squareLength
         }
+    }
 
-        menu.addItem(NSMenuItem(title: "Refresh Now", action: #selector(refreshClicked), keyEquivalent: "r"))
-        menu.addItem(.separator())
-        menu.addItem(NSMenuItem(title: "Quit NewsBar", action: #selector(quitClicked), keyEquivalent: "q"))
+    // MARK: - Badge
 
-        for item in menu.items where item.action != nil && item.target == nil {
-            item.target = self
+    private func showBadge() {
+        guard badgeDot == nil, let button = statusItem.button else { return }
+
+        let dot = CALayer()
+        dot.backgroundColor = NSColor.systemRed.cgColor
+        dot.cornerRadius = 3
+        dot.frame = CGRect(x: button.bounds.width - 8, y: button.bounds.height - 10, width: 6, height: 6)
+
+        button.wantsLayer = true
+        button.layer?.addSublayer(dot)
+        badgeDot = dot
+    }
+
+    private func clearBadge() {
+        badgeDot?.removeFromSuperlayer()
+        badgeDot = nil
+    }
+
+    // MARK: - Click Handling
+
+    private func setupClickAction() {
+        statusItem.button?.target = self
+        statusItem.button?.action = #selector(togglePopover)
+    }
+
+    @objc private func togglePopover() {
+        if popover.isShown {
+            popover.performClose(nil)
+        } else {
+            guard let button = statusItem.button else { return }
+            clearBadge()
+            bubbleController.dismiss(animated: false)
+            popoverController.update(headlines: headlines)
+            popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
         }
-
-        statusItem.menu = menu
-    }
-
-    // MARK: - Actions
-
-    @objc private func headlineClicked(_ sender: NSMenuItem) {
-        guard let url = sender.representedObject as? URL else { return }
-        NSWorkspace.shared.open(url)
-    }
-
-    @objc private func refreshClicked() {
-        previousTitles = []
-        refresh()
-    }
-
-    @objc private func quitClicked() {
-        NSApplication.shared.terminate(nil)
     }
 
     // MARK: - Timer
@@ -141,22 +106,58 @@ final class StatusBarController {
     // MARK: - Data
 
     private func refresh() {
+        fputs("[NewsBar] refresh() called\n", stderr)
         Task {
+            fputs("[NewsBar] fetching...\n", stderr)
             let items = await newsService.fetchAll()
+            fputs("[NewsBar] got \(items.count) items\n", stderr)
             await MainActor.run {
                 self.headlines = items
-                self.rebuildMenu(with: items)
 
                 let currentTitles = Set(items.map(\.title))
-                let hasNewHeadlines = !currentTitles.isSubset(of: self.previousTitles)
+                let newItems = items.filter { !self.previousTitles.contains($0.title) }
 
-                if hasNewHeadlines && !items.isEmpty {
-                    self.previousTitles = currentTitles
-                    self.showTicker(with: items.map(\.title))
-                } else if !self.isShowingTicker {
-                    self.collapseToIcon()
+                fputs("[NewsBar] \(items.count) items, \(newItems.count) new\n", stderr)
+                if !newItems.isEmpty {
+                    if !self.previousTitles.isEmpty {
+                        self.showBadge()
+                    }
+                    if let button = self.statusItem.button {
+                        let bubbleItems = self.makeBalancedBubbleItems(from: newItems, limit: 5)
+                        fputs("[NewsBar] showing bubbles for \(bubbleItems.count) items, button.window=\(String(describing: button.window))\n", stderr)
+                        self.bubbleController.show(headlines: bubbleItems, below: button)
+                    }
+                }
+                self.previousTitles = currentTitles
+
+                if self.popover.isShown {
+                    self.popoverController.update(headlines: items)
                 }
             }
         }
+    }
+
+    private func makeBalancedBubbleItems(from items: [NewsItem], limit: Int) -> [NewsItem] {
+        guard limit > 0 else { return [] }
+
+        var queues: [NewsSource: [NewsItem]] = [:]
+        for source in NewsSource.allCases {
+            queues[source] = items.filter { $0.source == source }
+        }
+
+        var result: [NewsItem] = []
+        while result.count < limit {
+            var addedAny = false
+            for source in NewsSource.allCases {
+                guard var queue = queues[source], !queue.isEmpty else { continue }
+                result.append(queue.removeFirst())
+                queues[source] = queue
+                addedAny = true
+                if result.count == limit { break }
+            }
+            if !addedAny { break }
+        }
+
+        return result
     }
 }

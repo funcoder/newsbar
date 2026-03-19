@@ -5,6 +5,7 @@ final class HackerNewsClient {
         let title: String
         let url: String?
         let id: Int
+        let text: String?
     }
 
     func fetch() async throws -> [NewsItem] {
@@ -37,6 +38,31 @@ final class HackerNewsClient {
         let itemURL = hnItem.url.flatMap(URL.init(string:))
             ?? URL(string: "https://news.ycombinator.com/item?id=\(hnItem.id)")!
 
-        return NewsItem(title: hnItem.title, url: itemURL, source: .hackerNews)
+        return NewsItem(
+            title: hnItem.title,
+            url: itemURL,
+            source: .hackerNews,
+            imageURL: nil,
+            summary: summary(for: hnItem, itemURL: itemURL)
+        )
+    }
+
+    private func summary(for item: HNItem, itemURL: URL) -> String {
+        if let text = item.text {
+            let strippedTags = text.replacingOccurrences(of: "<[^>]+>", with: " ", options: .regularExpression)
+            let decodedEntities = strippedTags
+                .replacingOccurrences(of: "&amp;", with: "&")
+                .replacingOccurrences(of: "&quot;", with: "\"")
+                .replacingOccurrences(of: "&#39;", with: "'")
+                .replacingOccurrences(of: "&nbsp;", with: " ")
+            let collapsedWhitespace = decodedEntities.replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
+            let trimmed = collapsedWhitespace.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !trimmed.isEmpty {
+                return trimmed
+            }
+        }
+
+        let host = itemURL.host()?.replacingOccurrences(of: "www.", with: "") ?? "news.ycombinator.com"
+        return "Top Hacker News story from \(host). Open for the full article and discussion."
     }
 }

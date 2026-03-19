@@ -9,6 +9,8 @@ struct NewsItem {
     let title: String
     let url: URL
     let source: NewsSource
+    let imageURL: URL?
+    let summary: String?
 }
 
 enum Constants {
@@ -18,7 +20,8 @@ enum Constants {
 
     static let headlinesPerSource = 5
     static let refreshInterval: TimeInterval = 900 // 15 minutes
-    static let tickerLoops = 2
-    static let headlineSeparator = "  ●  "
     static let menuBarIconName = "newspaper.fill"
+
+    static let bubbleDisplayDuration: TimeInterval = 9.0
+    static let bubbleAnimationDuration: TimeInterval = 0.35
 }

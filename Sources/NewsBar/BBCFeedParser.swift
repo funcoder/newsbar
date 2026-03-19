@@ -5,6 +5,8 @@ final class BBCFeedParser: NSObject, XMLParserDelegate {
     private var currentElement = ""
     private var currentTitle = ""
     private var currentLink = ""
+    private var currentDescription = ""
+    private var currentImageURL: URL?
     private var isInsideItem = false
     private var continuation: CheckedContinuation<[NewsItem], Error>?
 
@@ -34,6 +36,14 @@ final class BBCFeedParser: NSObject, XMLParserDelegate {
             isInsideItem = true
             currentTitle = ""
             currentLink = ""
+            currentDescription = ""
+            currentImageURL = nil
+            return
+        }
+
+        guard isInsideItem else { return }
+        if let imageURL = imageURL(from: elementName, attributes: attributes), currentImageURL == nil {
+            currentImageURL = imageURL
         }
     }
 
@@ -44,6 +54,8 @@ final class BBCFeedParser: NSObject, XMLParserDelegate {
             currentTitle += string
         case "link":
             currentLink += string
+        case "description":
+            currentDescription += string
         default:
             break
         }
@@ -60,9 +72,18 @@ final class BBCFeedParser: NSObject, XMLParserDelegate {
 
         let trimmedTitle = currentTitle.trimmingCharacters(in: .whitespacesAndNewlines)
         let trimmedLink = currentLink.trimmingCharacters(in: .whitespacesAndNewlines)
+        let cleanedSummary = sanitizeSummary(currentDescription)
 
         guard !trimmedTitle.isEmpty, let url = URL(string: trimmedLink) else { return }
-        items.append(NewsItem(title: trimmedTitle, url: url, source: .bbc))
+        items.append(
+            NewsItem(
+                title: trimmedTitle,
+                url: url,
+                source: .bbc,
+                imageURL: currentImageURL,
+                summary: cleanedSummary
+            )
+        )
     }
 
     func parserDidEndDocument(_ parser: XMLParser) {
@@ -74,5 +95,35 @@ final class BBCFeedParser: NSObject, XMLParserDelegate {
     func parser(_ parser: XMLParser, parseErrorOccurred parseError: Error) {
         continuation?.resume(throwing: parseError)
         continuation = nil
+    }
+
+    private func imageURL(from elementName: String, attributes: [String: String]) -> URL? {
+        let normalizedName = elementName.lowercased()
+        let key: String?
+
+        switch normalizedName {
+        case "media:thumbnail", "media:content":
+            key = attributes["url"]
+        case "enclosure":
+            let type = attributes["type"]?.lowercased() ?? ""
+            key = type.hasPrefix("image/") ? attributes["url"] : nil
+        default:
+            key = nil
+        }
+
+        guard let key, let url = URL(string: key) else { return nil }
+        return url
+    }
+
+    private func sanitizeSummary(_ raw: String) -> String? {
+        let strippedTags = raw.replacingOccurrences(of: "<[^>]+>", with: " ", options: .regularExpression)
+        let decodedEntities = strippedTags
+            .replacingOccurrences(of: "&amp;", with: "&")
+            .replacingOccurrences(of: "&quot;", with: "\"")
+            .replacingOccurrences(of: "&#39;", with: "'")
+            .replacingOccurrences(of: "&nbsp;", with: " ")
+        let collapsedWhitespace = decodedEntities.replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
+        let trimmed = collapsedWhitespace.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
     }
 }
