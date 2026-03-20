@@ -25,7 +25,9 @@ final class HeadlinePopoverController: NSViewController {
 
         scrollView.drawsBackground = false
         scrollView.hasVerticalScroller = true
+        scrollView.scrollerStyle = .overlay
         scrollView.autohidesScrollers = true
+        scrollView.scrollerKnobStyle = .dark
         scrollView.translatesAutoresizingMaskIntoConstraints = false
 
         contentStack.orientation = .vertical
@@ -87,7 +89,10 @@ final class HeadlinePopoverController: NSViewController {
 
     func update(headlines: [NewsItem]) {
         self.headlines = headlines
-        dateLabel.stringValue = "Wednesday \(Self.dateFormatter.string(from: Date()))  |  No 74971"
+        let dayName = Self.dayFormatter.string(from: Date())
+        let datePart = Self.dateFormatter.string(from: Date())
+        let edition = Calendar.current.ordinality(of: .day, in: .era, for: Date()) ?? 74971
+        dateLabel.stringValue = "\(dayName) \(datePart)  |  No \(edition)  |  50p"
         rebuildFrontPage()
         scrollToTop()
     }
@@ -121,7 +126,7 @@ final class HeadlinePopoverController: NSViewController {
         mainHeadline.action = #selector(headlineClicked(_:))
         addFullWidth(mainHeadline)
 
-        addFullWidth(makeRule())
+        addFullWidth(makeDoubleRule())
         addFullWidth(makeSectionsRow())
 
         resizeToFitContent()
@@ -188,8 +193,8 @@ final class HeadlinePopoverController: NSViewController {
     private func makeSectionsRow() -> NSView {
         let row = NSStackView()
         row.orientation = .horizontal
-        row.spacing = 14
-        row.distribution = .fillEqually
+        row.spacing = 0
+        row.distribution = .fill
         row.translatesAutoresizingMaskIntoConstraints = false
 
         let bbcSection = makeSectionColumn(
@@ -201,8 +206,23 @@ final class HeadlinePopoverController: NSViewController {
             items: headlines.filter { $0.source == .hackerNews }
         )
 
+        let divider = NSView()
+        divider.wantsLayer = true
+        divider.layer?.backgroundColor = NSColor.black.withAlphaComponent(0.12).cgColor
+        divider.translatesAutoresizingMaskIntoConstraints = false
+
         row.addArrangedSubview(bbcSection)
+        row.addArrangedSubview(divider)
         row.addArrangedSubview(hnSection)
+
+        NSLayoutConstraint.activate([
+            divider.widthAnchor.constraint(equalToConstant: 1),
+            bbcSection.widthAnchor.constraint(equalTo: hnSection.widthAnchor),
+        ])
+
+        row.setCustomSpacing(12, after: bbcSection)
+        row.setCustomSpacing(12, after: divider)
+
         return row
     }
 
@@ -224,7 +244,12 @@ final class HeadlinePopoverController: NSViewController {
         column.addArrangedSubview(sectionRule)
         sectionRule.widthAnchor.constraint(equalTo: column.widthAnchor).isActive = true
 
-        for item in items {
+        for (index, item) in items.enumerated() {
+            if index > 0 {
+                let separator = makeHairline()
+                column.addArrangedSubview(separator)
+                separator.widthAnchor.constraint(equalTo: column.widthAnchor).isActive = true
+            }
             let story = StoryButton(item: item, style: .columnStory)
             story.target = self
             story.action = #selector(headlineClicked(_:))
@@ -239,6 +264,9 @@ final class HeadlinePopoverController: NSViewController {
 
     private func makeMasthead() -> NSView {
         let container = NSView()
+
+        let topRule = makeRule()
+        topRule.translatesAutoresizingMaskIntoConstraints = false
 
         let topLine = NSTextField(labelWithString: "DAILY NEWSPAPER OF THE YEAR")
         topLine.font = .systemFont(ofSize: 10, weight: .bold)
@@ -259,20 +287,26 @@ final class HeadlinePopoverController: NSViewController {
         dateLabel.alignment = .center
         dateLabel.translatesAutoresizingMaskIntoConstraints = false
 
-        let bottomRule = makeRule()
+        let bottomRule = makeDoubleRule()
         bottomRule.translatesAutoresizingMaskIntoConstraints = false
 
+        container.addSubview(topRule)
         container.addSubview(topLine)
         container.addSubview(title)
         container.addSubview(dateLabel)
         container.addSubview(bottomRule)
 
         NSLayoutConstraint.activate([
-            topLine.topAnchor.constraint(equalTo: container.topAnchor),
+            topRule.topAnchor.constraint(equalTo: container.topAnchor),
+            topRule.leadingAnchor.constraint(equalTo: container.leadingAnchor),
+            topRule.trailingAnchor.constraint(equalTo: container.trailingAnchor),
+            topRule.heightAnchor.constraint(equalToConstant: 1),
+
+            topLine.topAnchor.constraint(equalTo: topRule.bottomAnchor, constant: 6),
             topLine.leadingAnchor.constraint(equalTo: container.leadingAnchor),
             topLine.trailingAnchor.constraint(equalTo: container.trailingAnchor),
 
-            title.topAnchor.constraint(equalTo: topLine.bottomAnchor, constant: 14),
+            title.topAnchor.constraint(equalTo: topLine.bottomAnchor, constant: 10),
             title.leadingAnchor.constraint(equalTo: container.leadingAnchor),
             title.trailingAnchor.constraint(equalTo: container.trailingAnchor),
 
@@ -280,10 +314,9 @@ final class HeadlinePopoverController: NSViewController {
             dateLabel.leadingAnchor.constraint(equalTo: container.leadingAnchor),
             dateLabel.trailingAnchor.constraint(equalTo: container.trailingAnchor),
 
-            bottomRule.topAnchor.constraint(equalTo: dateLabel.bottomAnchor, constant: 8),
+            bottomRule.topAnchor.constraint(equalTo: dateLabel.bottomAnchor, constant: 6),
             bottomRule.leadingAnchor.constraint(equalTo: container.leadingAnchor),
             bottomRule.trailingAnchor.constraint(equalTo: container.trailingAnchor),
-            bottomRule.heightAnchor.constraint(equalToConstant: 1),
         ])
 
         return container
@@ -354,6 +387,46 @@ final class HeadlinePopoverController: NSViewController {
         return rule
     }
 
+    private func makeDoubleRule() -> NSView {
+        let container = NSView()
+        container.translatesAutoresizingMaskIntoConstraints = false
+
+        let thin = NSView()
+        thin.wantsLayer = true
+        thin.layer?.backgroundColor = NSColor.black.withAlphaComponent(0.15).cgColor
+        thin.translatesAutoresizingMaskIntoConstraints = false
+
+        let thick = NSView()
+        thick.wantsLayer = true
+        thick.layer?.backgroundColor = NSColor.black.withAlphaComponent(0.35).cgColor
+        thick.translatesAutoresizingMaskIntoConstraints = false
+
+        container.addSubview(thin)
+        container.addSubview(thick)
+
+        NSLayoutConstraint.activate([
+            container.heightAnchor.constraint(equalToConstant: 5),
+            thin.topAnchor.constraint(equalTo: container.topAnchor),
+            thin.leadingAnchor.constraint(equalTo: container.leadingAnchor),
+            thin.trailingAnchor.constraint(equalTo: container.trailingAnchor),
+            thin.heightAnchor.constraint(equalToConstant: 1),
+            thick.topAnchor.constraint(equalTo: thin.bottomAnchor, constant: 2),
+            thick.leadingAnchor.constraint(equalTo: container.leadingAnchor),
+            thick.trailingAnchor.constraint(equalTo: container.trailingAnchor),
+            thick.heightAnchor.constraint(equalToConstant: 2),
+        ])
+        return container
+    }
+
+    private func makeHairline() -> NSView {
+        let rule = NSView()
+        rule.wantsLayer = true
+        rule.layer?.backgroundColor = NSColor.black.withAlphaComponent(0.1).cgColor
+        rule.translatesAutoresizingMaskIntoConstraints = false
+        rule.heightAnchor.constraint(equalToConstant: 1).isActive = true
+        return rule
+    }
+
     private func makeEmptyState() -> NSView {
         let label = NSTextField(wrappingLabelWithString: "No stories yet. Press Refresh to print the next edition.")
         label.font = NSFont(name: "TimesNewRomanPSMT", size: 20) ?? .systemFont(ofSize: 20, weight: .regular)
@@ -412,6 +485,12 @@ final class HeadlinePopoverController: NSViewController {
     @objc private func quitClicked() {
         onQuit?()
     }
+
+    private static let dayFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "EEEE"
+        return formatter
+    }()
 
     private static let dateFormatter: DateFormatter = {
         let formatter = DateFormatter()
@@ -675,30 +754,58 @@ private final class StoryButton: NSButton {
         layer?.cornerRadius = 2
         layer?.borderColor = NSColor.black.withAlphaComponent(0.08).cgColor
         layer?.borderWidth = 1
+        layer?.masksToBounds = true
+
+        let hasImage = item.imageURL != nil
 
         let headline = NSTextField(wrappingLabelWithString: item.title)
-        headline.font = NSFont(name: "TimesNewRomanPSMT", size: 20) ?? .systemFont(ofSize: 20, weight: .regular)
+        headline.font = NSFont(name: "TimesNewRomanPSMT", size: hasImage ? 16 : 20) ?? .systemFont(ofSize: hasImage ? 16 : 20, weight: .regular)
         headline.textColor = NSColor.black.withAlphaComponent(0.85)
-        headline.maximumNumberOfLines = 5
+        headline.maximumNumberOfLines = hasImage ? 3 : 5
         headline.translatesAutoresizingMaskIntoConstraints = false
 
-        let summary = NSTextField(wrappingLabelWithString: summaryText(maxLength: 120))
-        summary.font = NSFont(name: "TimesNewRomanPSMT", size: 11) ?? .systemFont(ofSize: 11, weight: .regular)
-        summary.textColor = NSColor.black.withAlphaComponent(0.72)
-        summary.maximumNumberOfLines = 3
-        summary.translatesAutoresizingMaskIntoConstraints = false
-
         addSubview(headline)
-        addSubview(summary)
-        NSLayoutConstraint.activate([
-            headline.topAnchor.constraint(equalTo: topAnchor, constant: 8),
-            headline.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 8),
-            headline.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -8),
-            summary.topAnchor.constraint(equalTo: headline.bottomAnchor, constant: 4),
-            summary.leadingAnchor.constraint(equalTo: headline.leadingAnchor),
-            summary.trailingAnchor.constraint(equalTo: headline.trailingAnchor),
-            summary.bottomAnchor.constraint(lessThanOrEqualTo: bottomAnchor, constant: -8),
-        ])
+
+        if hasImage {
+            let imageView = NSImageView()
+            imageView.wantsLayer = true
+            imageView.layer?.backgroundColor = NSColor.black.withAlphaComponent(0.06).cgColor
+            imageView.layer?.masksToBounds = true
+            imageView.imageScaling = .scaleProportionallyUpOrDown
+            imageView.translatesAutoresizingMaskIntoConstraints = false
+
+            addSubview(imageView)
+
+            NSLayoutConstraint.activate([
+                imageView.topAnchor.constraint(equalTo: topAnchor),
+                imageView.leadingAnchor.constraint(equalTo: leadingAnchor),
+                imageView.trailingAnchor.constraint(equalTo: trailingAnchor),
+                imageView.heightAnchor.constraint(equalToConstant: 70),
+                headline.topAnchor.constraint(equalTo: imageView.bottomAnchor, constant: 6),
+                headline.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 8),
+                headline.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -8),
+                headline.bottomAnchor.constraint(lessThanOrEqualTo: bottomAnchor, constant: -6),
+            ])
+
+            loadImage(into: imageView)
+        } else {
+            let summary = NSTextField(wrappingLabelWithString: summaryText(maxLength: 120))
+            summary.font = NSFont(name: "TimesNewRomanPSMT", size: 11) ?? .systemFont(ofSize: 11, weight: .regular)
+            summary.textColor = NSColor.black.withAlphaComponent(0.72)
+            summary.maximumNumberOfLines = 3
+            summary.translatesAutoresizingMaskIntoConstraints = false
+
+            addSubview(summary)
+            NSLayoutConstraint.activate([
+                headline.topAnchor.constraint(equalTo: topAnchor, constant: 8),
+                headline.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 8),
+                headline.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -8),
+                summary.topAnchor.constraint(equalTo: headline.bottomAnchor, constant: 4),
+                summary.leadingAnchor.constraint(equalTo: headline.leadingAnchor),
+                summary.trailingAnchor.constraint(equalTo: headline.trailingAnchor),
+                summary.bottomAnchor.constraint(lessThanOrEqualTo: bottomAnchor, constant: -8),
+            ])
+        }
     }
 
     private func configureMainHeadline() {
@@ -728,6 +835,8 @@ private final class StoryButton: NSButton {
     }
 
     private func configureColumnStory() {
+        let hasImage = item.imageURL != nil
+
         let headline = NSTextField(wrappingLabelWithString: item.title)
         headline.font = NSFont(name: "TimesNewRomanPS-BoldMT", size: 23) ?? .systemFont(ofSize: 23, weight: .bold)
         headline.textColor = NSColor.black.withAlphaComponent(0.85)
@@ -750,19 +859,51 @@ private final class StoryButton: NSButton {
         addSubview(body)
         addSubview(byline)
 
-        NSLayoutConstraint.activate([
-            heightAnchor.constraint(greaterThanOrEqualToConstant: 150),
-            headline.topAnchor.constraint(equalTo: topAnchor, constant: 2),
-            headline.leadingAnchor.constraint(equalTo: leadingAnchor),
-            headline.trailingAnchor.constraint(equalTo: trailingAnchor),
-            body.topAnchor.constraint(equalTo: headline.bottomAnchor, constant: 5),
-            body.leadingAnchor.constraint(equalTo: headline.leadingAnchor),
-            body.trailingAnchor.constraint(equalTo: headline.trailingAnchor),
-            byline.topAnchor.constraint(equalTo: body.bottomAnchor, constant: 4),
-            byline.leadingAnchor.constraint(equalTo: headline.leadingAnchor),
-            byline.trailingAnchor.constraint(equalTo: headline.trailingAnchor),
-            byline.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -2),
-        ])
+        if hasImage {
+            let imageView = NSImageView()
+            imageView.wantsLayer = true
+            imageView.layer?.backgroundColor = NSColor.black.withAlphaComponent(0.06).cgColor
+            imageView.layer?.cornerRadius = 2
+            imageView.layer?.masksToBounds = true
+            imageView.imageScaling = .scaleProportionallyUpOrDown
+            imageView.translatesAutoresizingMaskIntoConstraints = false
+
+            addSubview(imageView)
+
+            NSLayoutConstraint.activate([
+                heightAnchor.constraint(greaterThanOrEqualToConstant: 150),
+                imageView.topAnchor.constraint(equalTo: topAnchor, constant: 2),
+                imageView.leadingAnchor.constraint(equalTo: leadingAnchor),
+                imageView.trailingAnchor.constraint(equalTo: trailingAnchor),
+                imageView.heightAnchor.constraint(equalToConstant: 120),
+                headline.topAnchor.constraint(equalTo: imageView.bottomAnchor, constant: 6),
+                headline.leadingAnchor.constraint(equalTo: leadingAnchor),
+                headline.trailingAnchor.constraint(equalTo: trailingAnchor),
+                body.topAnchor.constraint(equalTo: headline.bottomAnchor, constant: 5),
+                body.leadingAnchor.constraint(equalTo: headline.leadingAnchor),
+                body.trailingAnchor.constraint(equalTo: headline.trailingAnchor),
+                byline.topAnchor.constraint(equalTo: body.bottomAnchor, constant: 4),
+                byline.leadingAnchor.constraint(equalTo: headline.leadingAnchor),
+                byline.trailingAnchor.constraint(equalTo: headline.trailingAnchor),
+                byline.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -2),
+            ])
+
+            loadImage(into: imageView)
+        } else {
+            NSLayoutConstraint.activate([
+                heightAnchor.constraint(greaterThanOrEqualToConstant: 150),
+                headline.topAnchor.constraint(equalTo: topAnchor, constant: 2),
+                headline.leadingAnchor.constraint(equalTo: leadingAnchor),
+                headline.trailingAnchor.constraint(equalTo: trailingAnchor),
+                body.topAnchor.constraint(equalTo: headline.bottomAnchor, constant: 5),
+                body.leadingAnchor.constraint(equalTo: headline.leadingAnchor),
+                body.trailingAnchor.constraint(equalTo: headline.trailingAnchor),
+                byline.topAnchor.constraint(equalTo: body.bottomAnchor, constant: 4),
+                byline.leadingAnchor.constraint(equalTo: headline.leadingAnchor),
+                byline.trailingAnchor.constraint(equalTo: headline.trailingAnchor),
+                byline.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -2),
+            ])
+        }
     }
 
     private func summaryText(maxLength: Int) -> String {
