@@ -24,4 +24,17 @@ enum Constants {
 
     static let bubbleDisplayDuration: TimeInterval = 9.0
     static let bubbleAnimationDuration: TimeInterval = 0.35
+
+    static let soundEnabledKey = "soundEnabled"
+}
+
+enum Settings {
+    static var soundEnabled: Bool {
+        get {
+            UserDefaults.standard.value(forKey: Constants.soundEnabledKey) as? Bool ?? true
+        }
+        set {
+            UserDefaults.standard.set(newValue, forKey: Constants.soundEnabledKey)
+        }
+    }
 }

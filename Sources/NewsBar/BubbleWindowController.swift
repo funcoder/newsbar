@@ -136,7 +136,9 @@ final class BubbleWindowController {
             panel.animator().setFrame(finalFrame, display: true)
         }
 
-        NSSound(named: .init("Bubble"))?.play()
+        if Settings.soundEnabled {
+            NSSound(named: .init("Bubble"))?.play()
+        }
 
         displayTimer = Timer.scheduledTimer(withTimeInterval: Constants.bubbleDisplayDuration, repeats: false) { [weak self] _ in
             guard let self else { return }

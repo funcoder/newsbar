@@ -6,6 +6,7 @@ final class HeadlinePopoverController: NSViewController {
     private let contentStack = NSStackView()
     private let dateLabel = NSTextField(labelWithString: "")
     private var headlines: [NewsItem] = []
+    private var soundToggleButton: NSButton?
 
     var onRefresh: (() -> Void)?
     var onQuit: (() -> Void)?
@@ -297,6 +298,10 @@ final class HeadlinePopoverController: NSViewController {
         refreshButton.contentTintColor = .black
         refreshButton.translatesAutoresizingMaskIntoConstraints = false
 
+        let muteButton = makeSoundToggleButton()
+        muteButton.translatesAutoresizingMaskIntoConstraints = false
+        soundToggleButton = muteButton
+
         let quitButton = NSButton(title: "Quit", target: self, action: #selector(quitClicked))
         quitButton.isBordered = false
         quitButton.font = NSFont(name: "TimesNewRomanPS-BoldMT", size: 15) ?? .systemFont(ofSize: 15, weight: .bold)
@@ -304,16 +309,40 @@ final class HeadlinePopoverController: NSViewController {
         quitButton.translatesAutoresizingMaskIntoConstraints = false
 
         footer.addSubview(refreshButton)
+        footer.addSubview(muteButton)
         footer.addSubview(quitButton)
 
         NSLayoutConstraint.activate([
             refreshButton.leadingAnchor.constraint(equalTo: footer.leadingAnchor, constant: 4),
             refreshButton.centerYAnchor.constraint(equalTo: footer.centerYAnchor),
+            muteButton.centerXAnchor.constraint(equalTo: footer.centerXAnchor),
+            muteButton.centerYAnchor.constraint(equalTo: footer.centerYAnchor),
             quitButton.trailingAnchor.constraint(equalTo: footer.trailingAnchor, constant: -4),
             quitButton.centerYAnchor.constraint(equalTo: footer.centerYAnchor),
         ])
 
         return footer
+    }
+
+    private func makeSoundToggleButton() -> NSButton {
+        let button = NSButton(frame: .zero)
+        button.isBordered = false
+        button.setButtonType(.momentaryChange)
+        button.target = self
+        button.action = #selector(soundToggleClicked)
+        updateSoundToggleIcon(button)
+        return button
+    }
+
+    private func updateSoundToggleIcon(_ button: NSButton) {
+        let symbolName = Settings.soundEnabled ? "speaker.wave.2" : "speaker.slash"
+        if let image = NSImage(systemSymbolName: symbolName, accessibilityDescription: "Toggle sound") {
+            let config = NSImage.SymbolConfiguration(pointSize: 14, weight: .medium)
+            button.image = image.withSymbolConfiguration(config) ?? image
+            button.contentTintColor = Settings.soundEnabled ? .black : NSColor.black.withAlphaComponent(0.4)
+            button.setAccessibilityLabel("Sound")
+            button.setAccessibilityHelp(Settings.soundEnabled ? "Sound is on" : "Sound is off")
+        }
     }
 
     private func makeRule() -> NSView {
@@ -371,6 +400,13 @@ final class HeadlinePopoverController: NSViewController {
 
     @objc private func refreshClicked() {
         onRefresh?()
+    }
+
+    @objc private func soundToggleClicked() {
+        Settings.soundEnabled = !Settings.soundEnabled
+        if let button = soundToggleButton {
+            updateSoundToggleIcon(button)
+        }
     }
 
     @objc private func quitClicked() {
